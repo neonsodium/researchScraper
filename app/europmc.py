@@ -1,286 +1,266 @@
+import logging
 import subprocess
-import re
 import urllib.parse
 import scrapy
-import argparse
 import pandas as pd
-import urllib
 from scrapy.crawler import CrawlerProcess
 from scrapy.utils.project import get_project_settings
 
-# Articals per Page
-ArticlePerPage = 100
-totalArticals = 0
+from constants_europmc import (
+    ARTICLE_PER_PAGE,
+    EMAIL_CHARACTER_DISALLOWED,
+    EMAIL_ID_DISALLOWED,
+    HEADERS,
+    OUTPUT_PATH_TEMPLATE,
+)
+from ulits_europmc import (
+    print_processing_data,
+    process_email,
+    email_affiliation,
+    contains_high_unicode,
+)
 
-# Excess Articals to crawl
-# excessErrorArtical = 1000
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    handlers=[logging.FileHandler("scraper.log"), logging.StreamHandler()],
+)
 
-
-# Define disallowed substrings and characters in emails
-email_character_disallowed = [",", "/", ";", ":", "(", ")", "&", "%", "?", "[", "]", "  ", "+"]
-
-email_id_disallowed = ["contact", "connect", "journals", "permission", "admin", "info"]
-
-
-# Crawled Articles counters and crawled data extracted
-Crawled_Articles_total = 0
-Crawled_Articles_data = 0
-
-# DataFrame to output the data
-output_dataframe = pd.DataFrame()
-def printProcessingData(artical_count):
-    print("================================================================================================")
-    print("Total articles crawled:" + str(Crawled_Articles_total))
-    print("Total articles extracted:" + str(Crawled_Articles_data))
-    print("Total number of articles to be crawled:" + str(artical_count))
-    print("================================================================================================")
-
-def contains_high_unicode(text):
-    """
-    Check if the given text contains any character with a Unicode value >= 132.
-
-    Parameters:
-    text (str): The text to check.
-
-    Returns:
-    bool: True if there is at least one character with a Unicode value >= 132, False otherwise.
-    """
-    for char in text:
-        if ord(char) >= 132:
-            return True
-    return False
-
-def process_email(email):
-    """
-    Process the given email address based on disallowed and required strings.
-
-    Args:
-        email (str): The email address to be processed.
-        disallowed_strings (list): List of disallowed substrings.
-        required_strings (list): List of required substrings.
-
-    Returns:
-        str: Result of processing the email address.
-    """
-    global email_character_disallowed
-    global email_id_disallowed
-
-
-    # Check for disallowed substrings
-    for substring in email_character_disallowed:
-        if substring in email:
-            return False
-
-    # Check if there are numbers before the @ symbol
-    if re.match(r'^\d+@[\w.-]+\.\w+$', email):
-        return False
-
-    # Check for required substrings
-    for substring in email_id_disallowed:
-        if substring in email:
-            return False
-
-    return True
-
-
-# Test the function
-# result = process_email(test_email, disallowed, required)
-
-
-
-#Extract email from affiliation
-def email_affiliation(affiliation):
-    email_pattern = r"(\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b)"
-    email = re.findall(email_pattern, affiliation)
-    email = ''.join(email)
-
-    # Remove the email from the affiliation after extracting the email
-    affiliation = affiliation.replace(str(email), "")
-
-    # Remove "Electronic address:" from the affiliation
-    remove = "Electronic address:"
-    if remove in affiliation:
-        affiliation = affiliation.replace(str(remove), "")
-
-    # Remove trailing "." or " " from the affiliation
-    if affiliation.endswith('.') or affiliation.endswith(' '):
-        affiliation = affiliation[:len(affiliation) - 1]
-
-    return email, affiliation
+logger = logging.getLogger(__name__)
 
 
 class PubMedSpider(scrapy.Spider):
-    name = 'EuroPMC'
+    name = "EuroPMC"
 
-    def __init__(self, title=None, keyword=None, abstract=None, start_year=None, end_year=None, *args, **kwargs):
-        super(PubMedSpider, self).__init__(*args, **kwargs)
+    def __init__(
+        self,
+        title,
+        keyword,
+        abstract,
+        start_year,
+        end_year,
+        shared_output,
+        *args,
+        **kwargs,
+    ):
+        super().__init__(*args, **kwargs)
+        self.output_dataframe = shared_output
         self.abstract = abstract
         self.keyword = keyword
+        self.Crawled_Articles_total = 0
+        self.Crawled_Articles_data = 0
         self.title = title
-        self.totalArticalsFound = 0
-        self.article_id = ''
-        self.nextCursorMark = '*'
-        self.NoOfArticles = ArticlePerPage
+        self.total_articles_found = 0
+        self.article_id = ""
+        self.next_cursor_mark = "*"
+        self.no_of_articles = ARTICLE_PER_PAGE
         self.start_year = start_year
-        self.headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.5735.199 Safari/537."}
         self.end_year = end_year
         self.page = 1
         self.start_urls = [self.get_start_url()]
-        self.crawl_check = 0
-        self.excessErrorArtical = 0
+        logger.info(
+            "Spider initialized with title: %s, keyword: %s, abstract: %s, "
+            "start_year: %s, end_year: %s",
+            title,
+            keyword,
+            abstract,
+            start_year,
+            end_year,
+        )
 
     def get_start_url(self):
-        # Construct the start and consecutive URL/API using the provided parameters
-            # date formate 1900-05-31
-        print(self.nextCursorMark)
-        return f'https://europepmc.org/api/get/articleApi?query=(TITLE:%22{self.title}%22%20AND%20%22{self.keyword}%22%20AND%20ABSTRACT:%22{self.abstract}%22)%20AND%20(FIRST_PDATE:%5B{self.start_year}%20TO%20{self.end_year}%5D)&cursorMark={self.nextCursorMark}&format=json&pageSize={self.NoOfArticles}&sort=Relevance&synonym=FALSE'
-    def get_article_data(self):
-        return f'https://europepmc.org/api/get/articleApi?query=(EXT_ID:{self.article_id})&format=json&resultType=core'
+        url = (
+            f"https://europepmc.org/api/get/articleApi?query="
+            f"(TITLE:{self.title} AND {self.keyword} AND ABSTRACT:{self.abstract}) "
+            f"AND (FIRST_PDATE:[{self.start_year} TO {self.end_year}])"
+            f"&cursorMark={self.next_cursor_mark}&format=json&pageSize={self.no_of_articles}"
+        )
+        logger.info("Constructed start URL: %s", url)
+        return url
 
-    def printCrawlExitStatement(self):
-        print("================================================================================================")
-        print(str(self.page) + " " + "No of pages where crawled" + '\n' + " No nextCursorMark was found on the page")
-        print("================================================================================================")
+    def get_start_url(self):
+        # date formate 1900-05-31
+        print(self.next_cursor_mark)
+        return f"https://europepmc.org/api/get/articleApi?query=(TITLE:%22{self.title}%22%20AND%20%22{self.keyword}%22%20AND%20ABSTRACT:%22{self.abstract}%22)%20AND%20(FIRST_PDATE:%5B{self.start_year}%20TO%20{self.end_year}%5D)&cursorMark={self.next_cursor_mark}&format=json&pageSize={self.no_of_articles}&sort=Relevance&synonym=FALSE"
+
+    def get_article_data(self):
+        return f"https://europepmc.org/api/get/articleApi?query=(EXT_ID:{self.article_id})&format=json&resultType=core"
 
     def parse(self, response):
-        # articles ID from API JSON Response
-        json_response = response.json()
-
-        if self.page == 1:
-            self.totalArticalsFound = json_response['hitCount']
-            totalArticals = self.totalArticalsFound
-            # self.excessErrorArtical = self.totalArticalsFound * 0.05
-        else:
-            printProcessingData(self.totalArticalsFound)
-
-        if Crawled_Articles_total+self.excessErrorArtical > self.totalArticalsFound and self.page != 1:  # Used 'and' instead of '&&'
-            self.printCrawlExitStatement()
-            return
         try:
-            articles_ids_json = json_response['resultList']['result']
-        except:
-            self.printCrawlExitStatement()
-            return
-        if not articles_ids_json:
+            logger.info("Parsing page %d", self.page)
+            json_response = response.json()
             if self.page == 1:
-                # No articles found on the first page, author not found
-                self.printCrawlExitStatement()
+                self.total_articles_found = json_response.get("hitCount", 0)
+                logger.info("Total articles found: %d", self.total_articles_found)
+
+            # Handle next cursor mark and articles parsing
+            articles = json_response.get("resultList", {}).get("result", [])
+            if not articles:
+                logger.warning("No articles found on page %d", self.page)
                 return
-            else:
-                self.printCrawlExitStatement()
-                # No articles found on subsequent pages, search for the author
-                # Exception handling =====INCOMPLETE=====
+
+            for article_id in articles:
+                self.article_id = article_id["id"]
+                yield response.follow(
+                    self.get_article_data(), self.parse_article, headers=HEADERS
+                )
+
+            # Update next cursor mark
+            self.next_cursor_mark = json_response.get("nextCursorMark")
+            if not self.next_cursor_mark:
+                logger.info("No more pages to crawl")
                 return
 
-        for article_id in articles_ids_json:
-            self.article_id = article_id['id']
-            yield response.follow(self.get_article_data(), self.parse_article, headers=self.headers)
+            # Continue crawling
+            self.page += 1
+            yield response.follow(self.get_start_url(), self.parse, headers=HEADERS)
 
-        try:
-            nextCursorMark = json_response['nextCursorMark']
-
-            # self.nextCursorMark = nextCursorMark.replace("=","%3D")
-            self.nextCursorMark = urllib.parse.quote(nextCursorMark)
-            print(self.nextCursorMark)
-        except:
-            self.printCrawlExitStatement()
-            return
-
-        # Increment page number and send request for the next page
-        self.page += 1
-        self.NoOfArticles += ArticlePerPage
-        # if self.page >= 999:
-        #     self.page = 1
-        yield response.follow(self.get_start_url(), self.parse, headers=self.headers)
+        except Exception as e:
+            logger.error("Error while parsing page %d: %s", self.page, e, exc_info=True)
 
     def parse_article(self, response):
-        global output_dataframe
-        global Crawled_Articles_total
-        global Crawled_Articles_data
-        Crawled_Articles_total += 1
-        author_data_all = response.json()
-        for author_items in author_data_all['resultList']['result']:
-            article_title = author_items['title']
-            # Check if affiliation exists and if it contains an email address and then Yield it
-            for author_info in author_items['authorList']['author']:
-                try:
-                    affiliation = author_info['authorAffiliationDetailsList']['authorAffiliation']
-                    affiliation = affiliation[0]['affiliation']
-                    author_name = author_info['fullName']
-                    if affiliation and '@' in affiliation:
-                        Crawled_Articles_data += 1
-                        author_data = []
-                        email, affiliation = email_affiliation(affiliation)
-                        if process_email(email) and not contains_high_unicode(author_name):
-                            author_data.append({
-                                'title': article_title,
-                                'author_name': author_name,
-                                'email': email,
-                                'affiliation': affiliation,
-                            })
 
-                            # Add author_data(Dictionary) to a dataFrame and then Append/Concat it to the global output DataFrame
-                            df_dictionary = pd.DataFrame(author_data)
-                            # output.to_csv(output_path, mode='a', index=False)
-                            output_dataframe = pd.concat([output_dataframe, df_dictionary], ignore_index=True)
+        self.Crawled_Articles_total += 1
+        try:
+            author_data_all = response.json()
+            logger.info(
+                "Processing article response, total articles crawled: %d",
+                self.Crawled_Articles_total,
+            )
+
+            # Iterate over authors in the response
+            for author_items in author_data_all.get("resultList", {}).get("result", []):
+                article_title = author_items.get("title", "Unknown Title")
+                logger.debug("Processing article: %s", article_title)
+
+                # Check if affiliation exists and if it contains an email address
+                for author_info in author_items.get("authorList", {}).get("author", []):
+                    try:
+                        affiliation_data = author_info.get(
+                            "authorAffiliationDetailsList", {}
+                        ).get("authorAffiliation", [])
+                        if not affiliation_data:
+                            logger.debug(
+                                "No affiliation data found for author: %s",
+                                author_info.get("fullName", "Unknown"),
+                            )
+                            continue
+
+                        affiliation = affiliation_data[0].get("affiliation", "")
+                        author_name = author_info.get("fullName", "Unknown Name")
+                        if affiliation and "@" in affiliation:
+                            self.Crawled_Articles_data += 1
+                            logger.info(
+                                "Valid affiliation with email found for author: %s",
+                                author_name,
+                            )
+
+                            email, affiliation = email_affiliation(affiliation)
+                            print("=" * 80)
+                            print("affiliation:", affiliation)
+                            print("email:", email)
+                            print("=" * 80)
+                            if process_email(
+                                email, EMAIL_CHARACTER_DISALLOWED, EMAIL_ID_DISALLOWED
+                            ) and not contains_high_unicode(author_name):
+                                author_data = [
+                                    {
+                                        "title": article_title,
+                                        "author_name": author_name,
+                                        "email": email,
+                                        "affiliation": affiliation,
+                                    }
+                                ]
+
+                                # Add data to DataFrame
+                                df_dictionary = pd.DataFrame(author_data)
+                                self.output_dataframe = pd.concat(
+                                    [self.output_dataframe, df_dictionary],
+                                    ignore_index=True,
+                                )
+                                logger.info(
+                                    "Added valid author data for: %s", author_name
+                                )
+                            else:
+                                logger.warning(
+                                    "Skipping invalid email or name for author: %s, email: %s",
+                                    author_name,
+                                    email,
+                                )
+                                author_data = [
+                                    {
+                                        "title": article_title,
+                                        "author_name": author_name,
+                                        "email": email,
+                                        "affiliation": affiliation,
+                                    }
+                                ]
+                                logger.debug("Invalid author data: %s", author_data)
                         else:
-                            author_data.append({
-                                'title': article_title,
-                                'author_name': author_name,
-                                'email': email,
-                                'affiliation': affiliation,
-                            })
-                            print(author_data)
-                except:
-                    print(author_info)
+                            logger.debug(
+                                "No valid email in affiliation for author: %s",
+                                author_name,
+                            )
+                    except Exception as e:
+                        logger.error(
+                            "Error processing author info: %s, Error: %s",
+                            author_info,
+                            e,
+                            exc_info=True,
+                        )
+
+        except Exception as e:
+            logger.error("Error processing article response: %s", e, exc_info=True)
 
 
-
-def run_spider(article_title, article_keyword, article_abstract, start_date, end_date):
-    process = CrawlerProcess(get_project_settings())
-    process.crawl(PubMedSpider, title=article_title, keyword=article_keyword, abstract=article_abstract,
-                  start_year=start_date, end_year=end_date)
-    process.start()
-
-    start_date = start_date.split('-')
-    end_date = end_date.split('-')
-    output_path = f'/var/www/html/output/EuroPMC_Output_{article_keyword}_{article_title}_{article_abstract}_{start_date[0]}_to_{end_date[0]}.csv'
-    # output_filename = f'/Users/vedanths/PycharmProjects/Bankinglabs/scraping_server/output/EuroPMC_Output_{article_keyword}_{article_title}_{article_abstract}_{start_date[0]}_to_{end_date[0]}.csv'
-    # f=open(output_path,'w')
-    # output_path = f'PubMed_Output_{article_keyword}_{article_title}_{start_date[0]}_{start_date[1]}_{start_date[2]}_to_{end_date[0]}_{end_date[1]}_{end_date[2]}.csv'
-    output_dataframe.drop_duplicates().to_csv(output_path, mode='a', index=False)
-    python_mailer = "/var/www/html/main/Mailer/mailer_4.py"
-    # python_mailer = "/Users/vedanths/PycharmProjects/Bankinglabs/scraping_server/main/Mailer/mailer_4.py"
+def run_spider(title, keyword, abstract, start_date, end_date):
+    logger.info(
+        "Starting spider with title: %s, keyword: %s, abstract: %s, start_date: %s, end_date: %s",
+        title,
+        keyword,
+        abstract,
+        start_date,
+        end_date,
+    )
+    shared_output = pd.DataFrame()
     try:
-        # Execute the Python file
-        subprocess.run(["python3", python_mailer,output_filename])
-    except subprocess.CalledProcessError as e:
-        print(f"Error executing the Python file: {e}")
-    except FileNotFoundError as e:
-        print(f"Python interpreter not found: {e}")
+        process = CrawlerProcess(get_project_settings())
+        process.crawl(
+            PubMedSpider,
+            title=title,
+            keyword=keyword,
+            abstract=abstract,
+            start_year=start_date,
+            end_year=end_date,
+            shared_output=shared_output,
+        )
+        process.start()
+        # Output path and execution of email sender
+        output_path = OUTPUT_PATH_TEMPLATE.format(
+            keyword=keyword,
+            title=title,
+            abstract=abstract,
+            start_year=start_date.split("-")[0],
+            end_year=end_date.split("-")[0],
+        )
+        output_dataframe = shared_output
+        print(output_dataframe.head())
+        output_dataframe.drop_duplicates().to_csv(output_path, mode="a", index=False)
+        logger.info("Scraping completed. Output saved to: %s", output_path)
+        # TODO
+        # try:
+        #     logger.info("Executing mailer script")
+        #     subprocess.run(["python3", PYTHON_MAILER_SCRIPT, output_path], check=True)
+        # except subprocess.CalledProcessError as e:
+        #     logger.error("Mailer script failed with error: %s", e)
+        # except Exception as e:
+        #     logger.error("Error executing mailer: %s", e, exc_info=True)
+
     except Exception as e:
-        print(f"An error occurred: {e}")
+        logger.error("Error running spider: %s", e, exc_info=True)
 
-    
-    print("================================================================================================")
-    print("Total articles found:" + str(totalArticals))
-    print("Total articles crawled:" + str(Crawled_Articles_total))
-    print("Total articles extracted:" + str(Crawled_Articles_data))
-    print("================================================================================================")
-
-
-
-
-# def main():
-#     title = input("title:")
-#     keyword = input("keyword:")
-#     abstract = input("abstract:")
-#     start_date = input("start_year:")
-#     end_date = input("end_year:")
-#     # file_name = input("file_name:")
-#     run_spider(title, keyword, abstract, start_date, end_date)
-#
-# main()
 
 if __name__ == "__main__":
     try:
@@ -295,19 +275,3 @@ if __name__ == "__main__":
 
     except ValueError:
         print("Invalid input. Please enter valid year values.")
-
-# if __name__ == "__main__":
-#     try:
-#         parser = argparse.ArgumentParser(description='Process article information.')
-#         parser.add_argument('title', type=str, help='Article Title')
-#         parser.add_argument('keyword', type=str, help='Article Keyword')
-#         parser.add_argument('abstract', type=str, help='Article Abstract')
-#         parser.add_argument('start_date', type=str, help='Start year')
-#         parser.add_argument('end_date', type=str, help='End year')
-#         parser.add_argument('file_name', type=str, help='File to append the data')
-#         args = parser.parse_args()
-#         run_spider(args.title, args.keyword, args.abstract, args.start_date, args.end_date, args.file_name)
-#         exit(0)
-#
-#     except ValueError:
-#         print("Invalid input. Please enter valid year values.")

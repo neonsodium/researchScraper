@@ -2,3 +2,4 @@ scrapy
 flask
 redis
 celery
+pandas
