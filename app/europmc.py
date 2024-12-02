@@ -28,6 +28,7 @@ logging.basicConfig(
 )
 
 logger = logging.getLogger(__name__)
+output_dataframe = pd.DataFrame()
 
 
 class PubMedSpider(scrapy.Spider):
@@ -40,12 +41,10 @@ class PubMedSpider(scrapy.Spider):
         abstract,
         start_year,
         end_year,
-        shared_output,
         *args,
         **kwargs,
     ):
         super().__init__(*args, **kwargs)
-        self.output_dataframe = shared_output
         self.abstract = abstract
         self.keyword = keyword
         self.Crawled_Articles_total = 0
@@ -121,7 +120,7 @@ class PubMedSpider(scrapy.Spider):
             logger.error("Error while parsing page %d: %s", self.page, e, exc_info=True)
 
     def parse_article(self, response):
-
+        global output_dataframe
         self.Crawled_Articles_total += 1
         try:
             author_data_all = response.json()
@@ -158,10 +157,10 @@ class PubMedSpider(scrapy.Spider):
                             )
 
                             email, affiliation = email_affiliation(affiliation)
-                            print("=" * 80)
-                            print("affiliation:", affiliation)
-                            print("email:", email)
-                            print("=" * 80)
+                            # print("=" * 80)
+                            # print("affiliation:", affiliation)
+                            # print("email:", email)
+                            # print("=" * 80)
                             if process_email(
                                 email, EMAIL_CHARACTER_DISALLOWED, EMAIL_ID_DISALLOWED
                             ) and not contains_high_unicode(author_name):
@@ -176,8 +175,8 @@ class PubMedSpider(scrapy.Spider):
 
                                 # Add data to DataFrame
                                 df_dictionary = pd.DataFrame(author_data)
-                                self.output_dataframe = pd.concat(
-                                    [self.output_dataframe, df_dictionary],
+                                output_dataframe = pd.concat(
+                                    [output_dataframe, df_dictionary],
                                     ignore_index=True,
                                 )
                                 logger.info(
@@ -224,7 +223,7 @@ def run_spider(title, keyword, abstract, start_date, end_date):
         start_date,
         end_date,
     )
-    shared_output = pd.DataFrame()
+    global output_dataframe
     try:
         process = CrawlerProcess(get_project_settings())
         process.crawl(
@@ -234,7 +233,6 @@ def run_spider(title, keyword, abstract, start_date, end_date):
             abstract=abstract,
             start_year=start_date,
             end_year=end_date,
-            shared_output=shared_output,
         )
         process.start()
         # Output path and execution of email sender
@@ -245,8 +243,6 @@ def run_spider(title, keyword, abstract, start_date, end_date):
             start_year=start_date.split("-")[0],
             end_year=end_date.split("-")[0],
         )
-        output_dataframe = shared_output
-        print(output_dataframe.head())
         output_dataframe.drop_duplicates().to_csv(output_path, mode="a", index=False)
         logger.info("Scraping completed. Output saved to: %s", output_path)
         # TODO
