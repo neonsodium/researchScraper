@@ -16,9 +16,7 @@ class Config:
     CELERY_BROKER_URL = "redis://localhost:6379/0"
     CELERY_RESULT_BACKEND = "redis://localhost:6379/0"
 
-    if (
-        platform.system() == "Darwin" or platform.system() == "Windows"
-    ):  # MacOS coz i work on
+    if platform.system() == "Darwin":  # MacOS coz i work on
         ENV = "development"
     elif platform.system() == "Linux":
         ENV = "production"
@@ -38,8 +36,8 @@ class ProductionConfig(Config):
     DEBUG = False
     LOGIN_REQUIRED = True
     PORT = 8009
-    USERNAME = "girish_pvl"
-    PASSWORD = "HelloML"
+    USERNAME = "p"
+    PASSWORD = "p"
 
 
 class TestingConfig(Config):

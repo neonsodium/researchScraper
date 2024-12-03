@@ -1,6 +1,4 @@
 import logging
-import subprocess
-import urllib.parse
 import scrapy
 import pandas as pd
 from scrapy.crawler import CrawlerProcess
@@ -20,7 +18,6 @@ from ulits_europmc import (
     contains_high_unicode,
 )
 
-# Configure logging
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
@@ -157,10 +154,6 @@ class PubMedSpider(scrapy.Spider):
                             )
 
                             email, affiliation = email_affiliation(affiliation)
-                            # print("=" * 80)
-                            # print("affiliation:", affiliation)
-                            # print("email:", email)
-                            # print("=" * 80)
                             if process_email(
                                 email, EMAIL_CHARACTER_DISALLOWED, EMAIL_ID_DISALLOWED
                             ) and not contains_high_unicode(author_name):
@@ -245,14 +238,6 @@ def run_spider(title, keyword, abstract, start_date, end_date):
         )
         output_dataframe.drop_duplicates().to_csv(output_path, mode="a", index=False)
         logger.info("Scraping completed. Output saved to: %s", output_path)
-        # TODO
-        # try:
-        #     logger.info("Executing mailer script")
-        #     subprocess.run(["python3", PYTHON_MAILER_SCRIPT, output_path], check=True)
-        # except subprocess.CalledProcessError as e:
-        #     logger.error("Mailer script failed with error: %s", e)
-        # except Exception as e:
-        #     logger.error("Error executing mailer: %s", e, exc_info=True)
 
     except Exception as e:
         logger.error("Error running spider: %s", e, exc_info=True)
@@ -265,7 +250,6 @@ if __name__ == "__main__":
         abstract = input("abstract:")
         start_date = input("start_year(1900):")
         end_date = input("end_year(1900):")
-        # file_name = input("file_name:")
         run_spider(title, keyword, abstract, start_date, end_date)
         exit(0)
 
