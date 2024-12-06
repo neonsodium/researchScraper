@@ -17,10 +17,7 @@ elif Config.ENV == "testing":
 
 try:
     app.config[Config.OUTPUT_DIR_VAR_NAME] = Config.SCANNER_OUT_DIR
-    os.makedirs(
-        os.path.join(os.getcwd(), app.config[Config.OUTPUT_DIR_VAR_NAME]),
-        exist_ok=True,
-    )
+    os.makedirs(os.path.join(os.getcwd(), app.config[Config.OUTPUT_DIR_VAR_NAME]), exist_ok=True)
 except OSError:
     print(OSError)
 

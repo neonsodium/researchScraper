@@ -1,21 +1,8 @@
-from config import get_config
 import os
 
-EMAIL_CHARACTER_DISALLOWED = [
-    ",",
-    "/",
-    ";",
-    ":",
-    "(",
-    ")",
-    "&",
-    "%",
-    "?",
-    "[",
-    "]",
-    "  ",
-    "+",
-]
+from config import get_config
+
+EMAIL_CHARACTER_DISALLOWED = [",", "/", ";", ":", "(", ")", "&", "%", "?", "[", "]", "  ", "+"]
 EMAIL_ID_DISALLOWED = ["contact", "connect", "journals", "permission", "admin", "info"]
 
 # Scrapy Default Configurations

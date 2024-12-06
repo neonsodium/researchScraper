@@ -6,7 +6,10 @@ from email.mime.base import MIMEBase
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 
-def send_email_with_attachment(subject, body, sender_email, receiver_email, password, file_path, max_attachment_size_mb=25):
+
+def send_email_with_attachment(
+    subject, body, sender_email, receiver_email, password, file_path, max_attachment_size_mb=25
+):
     try:
         # Create a multipart message and set headers
         message = MIMEMultipart()
@@ -37,10 +40,7 @@ def send_email_with_attachment(subject, body, sender_email, receiver_email, pass
             encoders.encode_base64(part)
 
             # Add a header with the unique filename for the attachment
-            part.add_header(
-                "Content-Disposition",
-                f"attachment; filename={attachment_filename}",
-            )
+            part.add_header("Content-Disposition", f"attachment; filename={attachment_filename}")
 
             # Add the attachment to the message
             message.attach(part)
@@ -58,6 +58,7 @@ def send_email_with_attachment(subject, body, sender_email, receiver_email, pass
     except Exception as e:
         print(f"An error occurred: {str(e)}")
 
+
 # Example usage:
 subject = "Webscraping output file"
 body = """This is an email with attachment sent from Python.
@@ -70,4 +71,3 @@ password = "acve ynep wrui tuvd"
 filename = "/Users/vedanths/Downloads/googlechrome.dmg"
 
 send_email_with_attachment(subject, body, sender_email, receiver_email, password, filename)
-

@@ -1,9 +1,7 @@
 import logging
-import scrapy
-import pandas as pd
-from scrapy.crawler import CrawlerProcess
-from scrapy.utils.project import get_project_settings
 
+import pandas as pd
+import scrapy
 from constants_europmc import (
     ARTICLE_PER_PAGE,
     EMAIL_CHARACTER_DISALLOWED,
@@ -11,12 +9,9 @@ from constants_europmc import (
     HEADERS,
     OUTPUT_PATH_TEMPLATE,
 )
-from ulits_europmc import (
-    print_processing_data,
-    process_email,
-    email_affiliation,
-    contains_high_unicode,
-)
+from scrapy.crawler import CrawlerProcess
+from scrapy.utils.project import get_project_settings
+from ulits_europmc import contains_high_unicode, email_affiliation, process_email
 
 logging.basicConfig(
     level=logging.INFO,
@@ -31,16 +26,7 @@ output_dataframe = pd.DataFrame()
 class PubMedSpider(scrapy.Spider):
     name = "EuroPMC"
 
-    def __init__(
-        self,
-        title,
-        keyword,
-        abstract,
-        start_year,
-        end_year,
-        *args,
-        **kwargs,
-    ):
+    def __init__(self, title, keyword, abstract, start_year, end_year, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.abstract = abstract
         self.keyword = keyword
@@ -99,9 +85,7 @@ class PubMedSpider(scrapy.Spider):
 
             for article_id in articles:
                 self.article_id = article_id["id"]
-                yield response.follow(
-                    self.get_article_data(), self.parse_article, headers=HEADERS
-                )
+                yield response.follow(self.get_article_data(), self.parse_article, headers=HEADERS)
 
             # Update next cursor mark
             self.next_cursor_mark = json_response.get("nextCursorMark")
@@ -134,9 +118,9 @@ class PubMedSpider(scrapy.Spider):
                 # Check if affiliation exists and if it contains an email address
                 for author_info in author_items.get("authorList", {}).get("author", []):
                     try:
-                        affiliation_data = author_info.get(
-                            "authorAffiliationDetailsList", {}
-                        ).get("authorAffiliation", [])
+                        affiliation_data = author_info.get("authorAffiliationDetailsList", {}).get(
+                            "authorAffiliation", []
+                        )
                         if not affiliation_data:
                             logger.debug(
                                 "No affiliation data found for author: %s",
@@ -149,8 +133,7 @@ class PubMedSpider(scrapy.Spider):
                         if affiliation and "@" in affiliation:
                             self.Crawled_Articles_data += 1
                             logger.info(
-                                "Valid affiliation with email found for author: %s",
-                                author_name,
+                                "Valid affiliation with email found for author: %s", author_name
                             )
 
                             email, affiliation = email_affiliation(affiliation)
@@ -169,12 +152,9 @@ class PubMedSpider(scrapy.Spider):
                                 # Add data to DataFrame
                                 df_dictionary = pd.DataFrame(author_data)
                                 output_dataframe = pd.concat(
-                                    [output_dataframe, df_dictionary],
-                                    ignore_index=True,
+                                    [output_dataframe, df_dictionary], ignore_index=True
                                 )
-                                logger.info(
-                                    "Added valid author data for: %s", author_name
-                                )
+                                logger.info("Added valid author data for: %s", author_name)
                             else:
                                 logger.warning(
                                     "Skipping invalid email or name for author: %s, email: %s",
@@ -192,8 +172,7 @@ class PubMedSpider(scrapy.Spider):
                                 logger.debug("Invalid author data: %s", author_data)
                         else:
                             logger.debug(
-                                "No valid email in affiliation for author: %s",
-                                author_name,
+                                "No valid email in affiliation for author: %s", author_name
                             )
                     except Exception as e:
                         logger.error(
