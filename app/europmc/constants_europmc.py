@@ -1,7 +1,3 @@
-import os
-
-from config import get_config
-
 EMAIL_CHARACTER_DISALLOWED = [",", "/", ";", ":", "(", ")", "&", "%", "?", "[", "]", "  ", "+"]
 EMAIL_ID_DISALLOWED = ["contact", "connect", "journals", "permission", "admin", "info"]
 

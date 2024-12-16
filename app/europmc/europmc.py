@@ -2,7 +2,7 @@ import logging
 
 import pandas as pd
 import scrapy
-from constants_europmc import (
+from app.europmc.constants_europmc import (
     ARTICLE_PER_PAGE,
     EMAIL_CHARACTER_DISALLOWED,
     EMAIL_ID_DISALLOWED,
@@ -11,7 +11,7 @@ from constants_europmc import (
 )
 from scrapy.crawler import CrawlerProcess
 from scrapy.utils.project import get_project_settings
-from ulits_europmc import contains_high_unicode, email_affiliation, process_email
+from app.europmc.ulits import contains_high_unicode, email_affiliation, process_email
 
 logging.basicConfig(
     level=logging.INFO,
@@ -222,14 +222,14 @@ def run_spider(title, keyword, abstract, start_date, end_date):
         logger.error("Error running spider: %s", e, exc_info=True)
 
 
-if __name__ == "__main__":
+def main():
     try:
-        title = input("title:")
-        keyword = input("keyword:")
-        abstract = input("abstract:")
-        start_date = input("start_year(1900):")
-        end_date = input("end_year(1900):")
-        run_spider(title, keyword, abstract, start_date, end_date)
+        # title = input("title:")
+        # keyword = input("keyword:")
+        # abstract = input("abstract:")
+        # start_date = input("start_year(1900):")
+        # end_date = input("end_year(1900):")
+        # run_spider(title, keyword, abstract, start_date, end_date)
         exit(0)
 
     except ValueError:
